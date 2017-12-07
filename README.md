@@ -1,1 +1,2 @@
-# cs342fall2017_p4
+# linux-file-system
+Simple file system implemented as a library in Linux using C
