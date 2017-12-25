@@ -19,6 +19,10 @@ int blockIndex;
 char **fileAllocations;
 int **fileBlockNumbers;
 int *open_file_table;
+int fsMounted;
+int dataStartIndex = 32768 / 4;
+int maxDataBlocks = 32768 * 3 / 4;
+int totalAllocatedBlocks;
 
 
 /* 
@@ -119,7 +123,7 @@ int myfs_makefs(char *vdisk)
 	}
 	for (int i = 0; i < MAXFILECOUNT; i++) {
 		for(int j = 0; j < 1024; j++) {
-			fileBlockNumbers[i][j] = 0;
+			fileBlockNumbers[i][j] = -1;
 		}
 	}
 	// put the FAT into the disk
@@ -174,12 +178,10 @@ int myfs_mount (char *vdisk)
 
 	// perform your mount operations here
 
-	// write your code
-
 	// initialize open file table
 	open_file_table = (int*) malloc(sizeof(int) * MAXFILECOUNT);
 	for(int i = 0; i < MAXFILECOUNT; i++) {
-		open_file_table[i] = 0;
+		open_file_table[i] = -1;
 	}
 	// read file allocations from memory
 	fileAllocations = (char**) malloc(sizeof(char*) * MAXFILECOUNT);
@@ -214,7 +216,16 @@ int myfs_mount (char *vdisk)
 		}
 		blockIndex++;
 	}
-	
+	fsMounted = 1;
+	totalAllocatedBlocks = 0;
+	// determine the number of total allocated blocks
+	for(int i = 0; i < MAXFILECOUNT; i++) {
+		for (int j = 0; j < 1024; j++) {
+			if (fileBlockNumbers[i][j] != -1) {
+				totalAllocatedBlocks++;
+			}
+		}
+	}
 	
 	/* you can place these returns wherever you want. Below
 	   we put them at the end of functions so that compiler will not
@@ -228,7 +239,32 @@ int myfs_umount()
 {
 	// perform your unmount operations here
 
-	// write your code
+	// put the FAT into the disk
+	blockIndex = 0;
+	for(int i = 0; i < MAXFILECOUNT; i++) {
+		char *buf = fileAllocations[i];
+		putblock(blockIndex, (void*) buf);
+		blockIndex++;
+	}
+	// put block numbers into the disk
+	for(int i = 0; i < MAXFILECOUNT; i++) {
+		int *buf = (int*) malloc(sizeof(int) * 1024);
+		for(int j = 0; j < 1024; j++) {
+			buf[j] = fileBlockNumbers[i][j];
+		}
+		putblock(blockIndex, (void *)buf);
+		blockIndex++;
+	}
+	// free the allocated blocks
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		free(fileAllocations[i]);
+		free(fileBlockNumbers[i]);
+	}
+	free(fileAllocations);
+	free(fileBlockNumbers);
+	free(open_file_table);
+
+	fsMounted = 0;
 
 	fsync (disk_fd); 
 	close (disk_fd); 
@@ -241,6 +277,24 @@ int myfs_create(char *filename)
 {
 
 	// write your code 
+	if (fsMounted == 0) {
+		printf("no file system is mounted\n");
+		return -1;
+	}
+
+	int index = -1; 
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		if (strcmp(fileAllocations[i], "") == 0) {
+			index = i;
+			break; 
+		}
+	}
+	if (index == -1) {
+		printf("file limit has been reached\n");
+		return -1;
+	}
+	
+	fileAllocations[index] = filename;
 
 	return (0); 
 }
@@ -249,9 +303,45 @@ int myfs_create(char *filename)
 /* open file filename */
 int myfs_open(char *filename)
 {
+	if (fsMounted == 0) {
+		printf("no file system is mounted\n");
+		return -1;
+	}
+
 	int index = -1; 
 	
 	// write your code
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		if (strcmp(fileAllocations[i], filename) == 0) {
+			index = i;
+			break; 
+		}
+	}
+	if (index == -1) {
+		printf("file not found\n");
+		return -1;
+	}
+
+	int indices[MAXFILECOUNT];
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		indices[i] = -1;
+	}
+	int curindex = 0;
+	char* fileName = filename;
+
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		if (strcmp(fileAllocations[i], fileName) == 0) {
+			indices[curindex] = i;
+			curindex++;
+		}
+	}
+
+	curindex = 0;
+	while (indices[curindex] != -1) {
+		if (open_file_table[indices[curindex]] == -1)
+			open_file_table[indices[curindex]] = 0;
+		curindex++;
+	}
        
 	return (index); 
 }
@@ -261,14 +351,78 @@ int myfs_close(int fd)
 {
 
 	// write your code
+	if (fsMounted == 0) {
+		printf("no file system is mounted\n");
+		return -1;
+	}
+
+	if (fd > 127 || fd < 0) {
+		return -1;
+	}
+	if (strcmp(fileAllocations[fd], "") != 0) {
+		return -1;
+	}
+
+	int indices[MAXFILECOUNT];
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		indices[i] = -1;
+	}
+	int curindex = 0;
+	char* fileName = fileAllocations[fd];
+
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		if (strcmp(fileAllocations[i], fileName) == 0) {
+			indices[curindex] = i;
+			curindex++;
+		}
+	}
+
+	curindex = 0;
+	while (indices[curindex] != -1) {
+		open_file_table[indices[curindex]] = -1;
+		curindex++;
+	}	
+
 
 	return (0); 
 }
 
 int myfs_delete(char *filename)
 {
+	int indices[MAXFILECOUNT];
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		indices[i] = -1;
+	}
+	int curindex = 0;
+	char* fileName = filename;
 
-	// write your code
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		if (strcmp(fileAllocations[i], fileName) == 0) {
+			indices[curindex] = i;
+			curindex++;
+		}
+	}
+	// file not found
+	if(indices[0] == -1) {
+		return -1;
+	}
+	// file is not closed so cannot be deleted
+	if(open_file_table[indices[0]] != -1) {
+		return -1;
+	}
+
+	curindex = 0;
+	while(indices[curindex] != -1) {
+		fileAllocations[indices[curindex]] = "";
+		open_file_table[indices[curindex]] = -1;
+		for (int i = 0; i < 1024; i++) {
+			if(fileBlockNumbers[indices[curindex]][i] != -1) {
+				fileBlockNumbers[indices[curindex]][i] = -1;
+				totalAllocatedBlocks--;
+			}
+		}
+		curindex++;
+	}
 
 	return (0); 
 }
