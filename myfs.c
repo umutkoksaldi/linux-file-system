@@ -19,6 +19,7 @@ int blockIndex;
 char **fileAllocations;
 int **fileBlockNumbers;
 int *open_file_table;
+int *byte_offsets;
 int fsMounted;
 int dataStartIndex = 32768 / 4;
 int maxDataBlocks = 32768 * 3 / 4;
@@ -180,8 +181,10 @@ int myfs_mount (char *vdisk)
 
 	// initialize open file table
 	open_file_table = (int*) malloc(sizeof(int) * MAXFILECOUNT);
+	byte_offsets = (int*) malloc(sizeof(int) * MAXFILECOUNT);
 	for(int i = 0; i < MAXFILECOUNT; i++) {
 		open_file_table[i] = -1;
+		byte_offsets[i] = -1;
 	}
 	// read file allocations from memory
 	fileAllocations = (char**) malloc(sizeof(char*) * MAXFILECOUNT);
@@ -263,6 +266,7 @@ int myfs_umount()
 	free(fileAllocations);
 	free(fileBlockNumbers);
 	free(open_file_table);
+	free(byte_offsets);
 
 	fsMounted = 0;
 
@@ -340,6 +344,9 @@ int myfs_open(char *filename)
 	while (indices[curindex] != -1) {
 		if (open_file_table[indices[curindex]] == -1)
 			open_file_table[indices[curindex]] = 0;
+		if(byte_offsets[indices[curindex]] == -1) {
+			byte_offsets[indices[curindex]] = 0;
+		}
 		curindex++;
 	}
        
@@ -380,6 +387,7 @@ int myfs_close(int fd)
 	curindex = 0;
 	while (indices[curindex] != -1) {
 		open_file_table[indices[curindex]] = -1;
+		byte_offsets[indices[curindex]] = -1;
 		curindex++;
 	}	
 
@@ -415,6 +423,7 @@ int myfs_delete(char *filename)
 	while(indices[curindex] != -1) {
 		fileAllocations[indices[curindex]] = "";
 		open_file_table[indices[curindex]] = -1;
+		byte_offsets[indices[curindex]] = -1;
 		for (int i = 0; i < 1024; i++) {
 			if(fileBlockNumbers[indices[curindex]][i] != -1) {
 				fileBlockNumbers[indices[curindex]][i] = -1;
@@ -429,9 +438,83 @@ int myfs_delete(char *filename)
 
 int myfs_read(int fd, void *buf, int n)
 {
-	int bytes_read = -1; 
+	int bytes_read = 0; 
 
 	// write your code
+	int indices[MAXFILECOUNT];
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		indices[i] = -1;
+	}
+	int curindex = 0;
+	char* fileName = fileAllocations[fd];
+
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		if (strcmp(fileAllocations[i], fileName) == 0) {
+			indices[curindex] = i;
+			curindex++;
+		}
+	}
+
+	// file not found
+	if(indices[0] == -1) {
+		return -1;
+	}
+
+	int initialBlockIndex = -1;
+	curindex = 0;
+	while (indices[curindex] != -1){
+		if(fileBlockNumbers[indices[curindex]][0] < -1) {
+			initialBlockIndex = curindex;
+			break;
+		}
+		curindex++;
+	}
+
+	int blockOffset = open_file_table[indices[initialBlockIndex]];
+	int byteOffset = byte_offsets[indices[initialBlockIndex]];
+
+	// read bytes is exceeding max
+	if(n > 1024) {
+		return -1;
+	}
+	// single block read
+	if (byteOffset + n <= 4095) {
+		int readIndex = indices[initialBlockIndex + (blockOffset / 1024)];
+		int curBlockOffset = blockOffset % 1024;
+
+		int block_to_read = fileBlockNumbers[readIndex][curBlockOffset];
+
+		void *blockBuf = malloc(BLOCKSIZE);
+		getblock(block_to_read, blockBuf);
+		int bufIndex = 0;
+		// read appropriate sections of block into the provided buffer
+		for (int i = byteOffset; i < byteOffset + n; i++) {
+			buf[bufIndex] = blockBuf[i];
+			bytes_read++;
+			bufIndex++;
+		}
+		// update byte offsets, block offset is unchanged
+		curindex = 0;
+		while (indices[curindex] != -1) {
+			byte_offsets[indices[curindex]] = byteOffset+n;
+			curindex++;
+		}	
+
+	}
+
+	// we need to read different blocks
+	/*
+	if(byteOffset + n > 4095) {
+		int firstBlock = blockOffset;
+		int secondBlock = firstBlock+1;
+
+		int readIndex = indices[initialBlockIndex + (firstBlock / 1024)];
+		int readIndex2 = indices[initialBlockIndex + (secondBlock / 1024)];
+
+		getblock(fileBlockNumbers[initialBlockIndex])
+	} 
+	*/
+	
 	
 	return (bytes_read); 
 
@@ -439,9 +522,72 @@ int myfs_read(int fd, void *buf, int n)
 
 int myfs_write(int fd, void *buf, int n)
 {
-	int bytes_written = -1; 
+	int bytes_written = 0; 
 
 	// write your code
+	int indices[MAXFILECOUNT];
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		indices[i] = -1;
+	}
+	int curindex = 0;
+	char* fileName = fileAllocations[fd];
+
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		if (strcmp(fileAllocations[i], fileName) == 0) {
+			indices[curindex] = i;
+			curindex++;
+		}
+	}
+
+	// file not found
+	if(indices[0] == -1) {
+		return -1;
+	}
+
+	int initialBlockIndex = -1;
+	curindex = 0;
+	while (indices[curindex] != -1){
+		if(fileBlockNumbers[indices[curindex]][0] < -1) {
+			initialBlockIndex = curindex;
+			break;
+		}
+		curindex++;
+	}
+
+	int blockOffset = open_file_table[indices[initialBlockIndex]];
+	int byteOffset = byte_offsets[indices[initialBlockIndex]];
+
+	// read bytes is exceeding max
+	if(n > 1024) {
+		return -1;
+	}
+
+	// single block write
+	if (byteOffset + n <= 4095) {
+		int readIndex = indices[initialBlockIndex + (blockOffset / 1024)];
+		int curBlockOffset = blockOffset % 1024;
+
+		int block_to_read = fileBlockNumbers[readIndex][curBlockOffset];
+
+		void *blockBuf = malloc(BLOCKSIZE);
+		getblock(block_to_read, blockBuf);
+		int bufIndex = 0;
+		// read appropriate sections of block into the provided buffer
+		for (int i = byteOffset; i < byteOffset + n; i++) {
+			buf[bufIndex] = blockBuf[i];
+			bytes_read++;
+			bufIndex++;
+		}
+		// update byte offsets, block offset is unchanged
+		curindex = 0;
+		while (indices[curindex] != -1) {
+			byte_offsets[indices[curindex]] = byteOffset+n;
+			curindex++;
+		}	
+
+	}
+
+
 
 	return (bytes_written); 
 } 
