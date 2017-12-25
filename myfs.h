@@ -15,7 +15,7 @@ int myfs_makefs (char *diskname);
 
 // The following will be used by a program to work with files
 int myfs_mount (char *vdisk);
-int myfs_umount();formatdisk.c
+int myfs_umount();
 
 int myfs_create(char *filename);
 int myfs_open(char *filename);

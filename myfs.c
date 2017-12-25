@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <errno.h>
 
 #include "myfs.h"
 
@@ -13,6 +14,11 @@ char disk_name[128];   // name of virtual disk file
 int  disk_size;        // size in bytes - a power of 2
 int  disk_fd;          // disk file handle
 int  disk_blockcount;  // block count on disk
+int blockIndex;
+
+char **fileAllocations;
+int **fileBlockNumbers;
+int *open_file_table;
 
 
 /* 
@@ -76,7 +82,10 @@ int putblock (int blocknum, void *buf)
 
 int myfs_diskcreate (char *vdisk)
 {
-  return(0); 
+	disk_fd = open(vdisk, O_CREAT | O_RDWR, 0666);
+	int ret = ftruncate(disk_fd, 1000*1000*128);
+
+	return ret; 
 }
 
 
@@ -95,6 +104,40 @@ int myfs_makefs(char *vdisk)
 	
 	// perform your format operations here. 
 	printf ("formatting disk=%s, size=%d\n", vdisk, disk_size); 
+	// initialize the names of files allocated
+	fileAllocations = (char**) malloc(sizeof(char*) * MAXFILECOUNT);
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		fileAllocations[i] = (char*) malloc(sizeof(char) * 32);
+	}
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		fileAllocations[i] = "";
+	}
+	// initialize the file locations in a 2d array
+	fileBlockNumbers = (int **) malloc(sizeof(char*) * MAXFILECOUNT);
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		fileBlockNumbers[i] = (int*) malloc(sizeof(int) * 1024);
+	}
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		for(int j = 0; j < 1024; j++) {
+			fileBlockNumbers[i][j] = 0;
+		}
+	}
+	// put the FAT into the disk
+	blockIndex = 0;
+	for(int i = 0; i < MAXFILECOUNT; i++) {
+		char *buf = fileAllocations[i];
+		putblock(blockIndex, (void*) buf);
+		blockIndex++;
+	}
+	// put block numbers into the disk
+	for(int i = 0; i < MAXFILECOUNT; i++) {
+		int *buf = (int*) malloc(sizeof(int) * 1024);
+		for(int j = 0; j < 1024; j++) {
+			buf[j] = fileBlockNumbers[i][j];
+		}
+		putblock(blockIndex, (void *)buf);
+		blockIndex++;
+	}
 
 	fsync (disk_fd); 
 	close (disk_fd); 
@@ -132,6 +175,46 @@ int myfs_mount (char *vdisk)
 	// perform your mount operations here
 
 	// write your code
+
+	// initialize open file table
+	open_file_table = (int*) malloc(sizeof(int) * MAXFILECOUNT);
+	for(int i = 0; i < MAXFILECOUNT; i++) {
+		open_file_table[i] = 0;
+	}
+	// read file allocations from memory
+	fileAllocations = (char**) malloc(sizeof(char*) * MAXFILECOUNT);
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		fileAllocations[i] = (char*) malloc(sizeof(char) * 32);
+	}
+	blockIndex = 0;
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		void *buf = malloc(sizeof(char) * 32);
+		if (getblock(blockIndex, buf) != 0) {
+			printf("get block failed\n");
+			exit(1);
+		}
+		char *temp = (char*) buf;
+		fileAllocations[i] = temp;
+		blockIndex++;
+	}
+	// read file block numbers from memory
+	fileBlockNumbers = (int **) malloc(sizeof(char*) * MAXFILECOUNT);
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		fileBlockNumbers[i] = (int*) malloc(sizeof(int) * 1024);
+	}
+	for(int i = 0; i < MAXFILECOUNT; i++ ) {
+		void *buf = malloc(sizeof(int) * 1024);
+		if (getblock(blockIndex, buf) != 0) {
+			printf("get block failed\n");
+			exit(1);
+		}
+		int* temp = (int*) buf;
+		for (int j = 0; j < 1024; j++) {
+			fileBlockNumbers[i][j] = temp[j];
+		}
+		blockIndex++;
+	}
+	
 	
 	/* you can place these returns wherever you want. Below
 	   we put them at the end of functions so that compiler will not

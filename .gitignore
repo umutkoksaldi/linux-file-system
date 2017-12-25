@@ -1,0 +1,5 @@
+testDisk
+*.o
+app
+createdisk
+formatdisk
