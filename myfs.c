@@ -22,6 +22,7 @@ int *open_file_table;
 int *byte_offsets;
 int fsMounted;
 int dataStartIndex = 32768 / 4;
+int *allBlocks;
 int maxDataBlocks = 32768 * 3 / 4;
 int totalAllocatedBlocks;
 
@@ -221,10 +222,15 @@ int myfs_mount (char *vdisk)
 	}
 	fsMounted = 1;
 	totalAllocatedBlocks = 0;
+	allBlocks = (int*) malloc(sizeof(int) * maxDataBlocks);
+	for (int i = 0; i < maxDataBlocks; i++) {
+		allBlocks[i] = 0;
+	}
 	// determine the number of total allocated blocks
 	for(int i = 0; i < MAXFILECOUNT; i++) {
 		for (int j = 0; j < 1024; j++) {
 			if (fileBlockNumbers[i][j] != -1) {
+				allBlocks[fileBlockNumbers[i][j] - dataStartIndex] = 1;
 				totalAllocatedBlocks++;
 			}
 		}
@@ -326,28 +332,11 @@ int myfs_open(char *filename)
 		return -1;
 	}
 
-	int indices[MAXFILECOUNT];
-	for (int i = 0; i < MAXFILECOUNT; i++) {
-		indices[i] = -1;
+	if (open_file_table[index] == -1) {
+		open_file_table[index] = 0;
 	}
-	int curindex = 0;
-	char* fileName = filename;
-
-	for (int i = 0; i < MAXFILECOUNT; i++) {
-		if (strcmp(fileAllocations[i], fileName) == 0) {
-			indices[curindex] = i;
-			curindex++;
-		}
-	}
-
-	curindex = 0;
-	while (indices[curindex] != -1) {
-		if (open_file_table[indices[curindex]] == -1)
-			open_file_table[indices[curindex]] = 0;
-		if(byte_offsets[indices[curindex]] == -1) {
-			byte_offsets[indices[curindex]] = 0;
-		}
-		curindex++;
+	if (byte_offsets[index] == -1) {
+		byte_offsets[index] = 0;
 	}
        
 	return (index); 
@@ -356,7 +345,6 @@ int myfs_open(char *filename)
 /* close file filename */
 int myfs_close(int fd)
 {
-
 	// write your code
 	if (fsMounted == 0) {
 		printf("no file system is mounted\n");
@@ -366,72 +354,44 @@ int myfs_close(int fd)
 	if (fd > 127 || fd < 0) {
 		return -1;
 	}
-	if (strcmp(fileAllocations[fd], "") != 0) {
+	if (strcmp(fileAllocations[fd], "") == 0) {
 		return -1;
 	}
 
-	int indices[MAXFILECOUNT];
-	for (int i = 0; i < MAXFILECOUNT; i++) {
-		indices[i] = -1;
-	}
-	int curindex = 0;
-	char* fileName = fileAllocations[fd];
-
-	for (int i = 0; i < MAXFILECOUNT; i++) {
-		if (strcmp(fileAllocations[i], fileName) == 0) {
-			indices[curindex] = i;
-			curindex++;
-		}
-	}
-
-	curindex = 0;
-	while (indices[curindex] != -1) {
-		open_file_table[indices[curindex]] = -1;
-		byte_offsets[indices[curindex]] = -1;
-		curindex++;
-	}	
-
+	open_file_table[fd] = -1;
+	byte_offsets[fd] = -1;
 
 	return (0); 
 }
 
 int myfs_delete(char *filename)
 {
-	int indices[MAXFILECOUNT];
+	int index = -1; 
+	
+	// write your code
 	for (int i = 0; i < MAXFILECOUNT; i++) {
-		indices[i] = -1;
-	}
-	int curindex = 0;
-	char* fileName = filename;
-
-	for (int i = 0; i < MAXFILECOUNT; i++) {
-		if (strcmp(fileAllocations[i], fileName) == 0) {
-			indices[curindex] = i;
-			curindex++;
+		if (strcmp(fileAllocations[i], filename) == 0) {
+			index = i;
+			break; 
 		}
 	}
-	// file not found
-	if(indices[0] == -1) {
+	if (index == -1) {
+		printf("file not found\n");
 		return -1;
 	}
-	// file is not closed so cannot be deleted
-	if(open_file_table[indices[0]] != -1) {
+	if(open_file_table[index] != -1) {
 		return -1;
 	}
 
-	curindex = 0;
-	while(indices[curindex] != -1) {
-		fileAllocations[indices[curindex]] = "";
-		open_file_table[indices[curindex]] = -1;
-		byte_offsets[indices[curindex]] = -1;
-		for (int i = 0; i < 1024; i++) {
-			if(fileBlockNumbers[indices[curindex]][i] != -1) {
-				fileBlockNumbers[indices[curindex]][i] = -1;
-				totalAllocatedBlocks--;
-			}
+	fileAllocations[index] = "";
+	for(int i = 0; i < 1024; i++) {
+		if (fileBlockNumbers[index][i] != -1) {
+			allBlocks[fileBlockNumbers[index][i] - dataStartIndex] = 0;
+			fileBlockNumbers[index][i] = -1;
 		}
-		curindex++;
 	}
+	open_file_table[index] = -1;
+	byte_offsets[index] = -1;
 
 	return (0); 
 }
@@ -440,82 +400,71 @@ int myfs_read(int fd, void *buf, int n)
 {
 	int bytes_read = 0; 
 
-	// write your code
-	int indices[MAXFILECOUNT];
-	for (int i = 0; i < MAXFILECOUNT; i++) {
-		indices[i] = -1;
+	if (fsMounted == 0) {
+		printf("no file system is mounted\n");
+		return -1;
 	}
-	int curindex = 0;
-	char* fileName = fileAllocations[fd];
-
-	for (int i = 0; i < MAXFILECOUNT; i++) {
-		if (strcmp(fileAllocations[i], fileName) == 0) {
-			indices[curindex] = i;
-			curindex++;
-		}
+	// index out of range
+	if (fd > 127 || fd < 0) {
+		return -1;
 	}
-
 	// file not found
-	if(indices[0] == -1) {
+	if (strcmp(fileAllocations[fd], "") == 0) {
 		return -1;
 	}
+	// single block will be read
+	if (byte_offsets[fd] + n <= 4095) {
+		int blockOffset = open_file_table[fd];
 
-	int initialBlockIndex = -1;
-	curindex = 0;
-	while (indices[curindex] != -1){
-		if(fileBlockNumbers[indices[curindex]][0] < -1) {
-			initialBlockIndex = curindex;
-			break;
-		}
-		curindex++;
-	}
+		int blockNo = fileBlockNumbers[fd][blockOffset];
 
-	int blockOffset = open_file_table[indices[initialBlockIndex]];
-	int byteOffset = byte_offsets[indices[initialBlockIndex]];
-
-	// read bytes is exceeding max
-	if(n > 1024) {
-		return -1;
-	}
-	// single block read
-	if (byteOffset + n <= 4095) {
-		int readIndex = indices[initialBlockIndex + (blockOffset / 1024)];
-		int curBlockOffset = blockOffset % 1024;
-
-		int block_to_read = fileBlockNumbers[readIndex][curBlockOffset];
-
-		void *blockBuf = malloc(BLOCKSIZE);
-		getblock(block_to_read, blockBuf);
+		char *blockBuffer = malloc(BLOCKSIZE);
+		getblock(blockNo, (void *) blockBuffer);
 		int bufIndex = 0;
-		// read appropriate sections of block into the provided buffer
-		for (int i = byteOffset; i < byteOffset + n; i++) {
-			buf[bufIndex] = blockBuf[i];
-			bytes_read++;
+		char *temp = (char*) buf;
+		for(int i = byte_offsets[fd]; i < byte_offsets[fd] + n; i++) {
+			temp[bufIndex] = blockBuffer[i];
 			bufIndex++;
+			bytes_read++;
 		}
-		// update byte offsets, block offset is unchanged
-		curindex = 0;
-		while (indices[curindex] != -1) {
-			byte_offsets[indices[curindex]] = byteOffset+n;
-			curindex++;
-		}	
+		buf = (void *) temp;
+		byte_offsets[fd] += n;
+		
+	}
+	// multiple blocks will be read
+	else {
+		int blockOffset = open_file_table[fd];
+
+		int blockNo = fileBlockNumbers[fd][blockOffset];
+
+		char *blockBuffer = malloc(BLOCKSIZE);
+		getblock(blockNo, (void *) blockBuffer);
+		int bufIndex = 0;
+		char *temp = (char*) buf;
+		for(int i = byte_offsets[fd]; i < 4096; i++) {
+			temp[bufIndex] = blockBuffer[i];
+			bufIndex++;
+			bytes_read++;
+		}
+		blockOffset++;
+		blockNo = fileBlockNumbers[fd][blockOffset];
+
+		n = n-bytes_read;
+		blockBuffer = malloc(BLOCKSIZE);
+		getblock(blockNo, (void *) blockBuffer);
+		for(int i = 0; i < n; i++) {
+			temp[bufIndex] = blockBuffer[i];
+			bufIndex++;
+			bytes_read++;
+		}
+
+		open_file_table[fd]++;
+		byte_offsets[fd] = n;
 
 	}
-
-	// we need to read different blocks
-	/*
-	if(byteOffset + n > 4095) {
-		int firstBlock = blockOffset;
-		int secondBlock = firstBlock+1;
-
-		int readIndex = indices[initialBlockIndex + (firstBlock / 1024)];
-		int readIndex2 = indices[initialBlockIndex + (secondBlock / 1024)];
-
-		getblock(fileBlockNumbers[initialBlockIndex])
-	} 
-	*/
-	
-	
+	if (bytes_read == 0) {
+		return -1;
+	}
 	return (bytes_read); 
 
 }
@@ -524,70 +473,87 @@ int myfs_write(int fd, void *buf, int n)
 {
 	int bytes_written = 0; 
 
-	// write your code
-	int indices[MAXFILECOUNT];
-	for (int i = 0; i < MAXFILECOUNT; i++) {
-		indices[i] = -1;
+	if (fsMounted == 0) {
+		printf("no file system is mounted\n");
+		return -1;
 	}
-	int curindex = 0;
-	char* fileName = fileAllocations[fd];
-
-	for (int i = 0; i < MAXFILECOUNT; i++) {
-		if (strcmp(fileAllocations[i], fileName) == 0) {
-			indices[curindex] = i;
-			curindex++;
-		}
+	// index out of range
+	if (fd > 127 || fd < 0) {
+		return -1;
 	}
-
 	// file not found
-	if(indices[0] == -1) {
+	if (strcmp(fileAllocations[fd], "") == 0) {
 		return -1;
 	}
+	// single block will be written
+	if (byte_offsets[fd] + n <= 4095) {
+		int blockOffset = open_file_table[fd];
 
-	int initialBlockIndex = -1;
-	curindex = 0;
-	while (indices[curindex] != -1){
-		if(fileBlockNumbers[indices[curindex]][0] < -1) {
-			initialBlockIndex = curindex;
-			break;
-		}
-		curindex++;
-	}
+		int blockNo = fileBlockNumbers[fd][blockOffset];
 
-	int blockOffset = open_file_table[indices[initialBlockIndex]];
-	int byteOffset = byte_offsets[indices[initialBlockIndex]];
-
-	// read bytes is exceeding max
-	if(n > 1024) {
-		return -1;
-	}
-
-	// single block write
-	if (byteOffset + n <= 4095) {
-		int readIndex = indices[initialBlockIndex + (blockOffset / 1024)];
-		int curBlockOffset = blockOffset % 1024;
-
-		int block_to_read = fileBlockNumbers[readIndex][curBlockOffset];
-
-		void *blockBuf = malloc(BLOCKSIZE);
-		getblock(block_to_read, blockBuf);
+		char *blockBuffer = malloc(BLOCKSIZE);
+		getblock(blockNo, (void *) blockBuffer);
 		int bufIndex = 0;
-		// read appropriate sections of block into the provided buffer
-		for (int i = byteOffset; i < byteOffset + n; i++) {
-			buf[bufIndex] = blockBuf[i];
-			bytes_read++;
+		char *temp = (char*) buf;
+		for(int i = byte_offsets[fd]; i < byte_offsets[fd] + n; i++) {
+			blockBuffer[i] = temp[bufIndex];
 			bufIndex++;
+			bytes_written++;
 		}
-		// update byte offsets, block offset is unchanged
-		curindex = 0;
-		while (indices[curindex] != -1) {
-			byte_offsets[indices[curindex]] = byteOffset+n;
-			curindex++;
-		}	
-
+		putblock(blockNo, (void *)blockBuffer);
+		byte_offsets[fd] += n;
+		
 	}
+	// multiple files
+	else {
+		int blockOffset = open_file_table[fd];
 
+		int blockNo = fileBlockNumbers[fd][blockOffset];
 
+		char *blockBuffer = malloc(BLOCKSIZE);
+		getblock(blockNo, (void *) blockBuffer);
+		int bufIndex = 0;
+		char *temp = (char*) buf;
+		for(int i = byte_offsets[fd]; i < 4096; i++) {
+			blockBuffer[i] = temp[bufIndex];
+			bufIndex++;
+			bytes_written++;
+		}
+		putblock(blockNo,(void *) blockBuffer);
+		free(blockBuffer);
+		blockOffset++;
+
+		blockNo = fileBlockNumbers[fd][blockOffset];
+		// allocate new block
+		if(blockNo == -1) {
+			int freeblock = -1;
+			for (int i = 0; i < maxDataBlocks; i++) { 
+				if (allBlocks[i] == 0) {
+					freeblock = i;
+					break;
+				}
+			}
+			// no free block
+			if (freeblock == -1) { 
+				return -1;
+			}
+			allBlocks[freeblock] = 1;
+			fileBlockNumbers[fd][blockOffset] = freeblock + dataStartIndex;
+			blockNo = freeblock + dataStartIndex;
+		}
+
+		n = n-bytes_written;
+		blockBuffer = malloc(BLOCKSIZE);
+		for(int i = 0; i < n; i++) {
+			blockBuffer[i] = temp[bufIndex];
+			bufIndex++;
+			bytes_written++;
+		}
+		putblock(blockNo, (void *) blockBuffer);
+		free(blockBuffer);
+		open_file_table[fd]++;
+		byte_offsets[fd] = n;
+	}
 
 	return (bytes_written); 
 } 
@@ -596,6 +562,35 @@ int myfs_truncate(int fd, int size)
 {
 
 	// write your code
+	if (fsMounted == 0) {
+		printf("no file system is mounted\n");
+		return -1;
+	}
+	// index out of range
+	if (fd > 127 || fd < 0) {
+		return -1;
+	}
+	// file not found
+	if (strcmp(fileAllocations[fd], "") == 0) {
+		return -1;
+	}
+	// filesize exceeds current file size
+	if (size >= myfs_filesize(fd)) {
+		return -1;
+	}
+
+	int numOfBlocks = size / BLOCKSIZE;
+	int byteOffset = size % BLOCKSIZE;
+
+	for (int i = 0; i < 1024; i++) {
+		if (i > numOfBlocks - 1) {
+			allBlocks[fileBlockNumbers[fd][i] - dataStartIndex] = 0;
+			fileBlockNumbers[fd][i] = -1;
+		}
+	}
+
+	open_file_table[fd] = numOfBlocks - 1;
+	byte_offsets[fd] = byteOffset;
 
 	return (0); 
 } 
@@ -605,16 +600,60 @@ int myfs_seek(int fd, int offset)
 {
 	int position = -1; 
 
-	// write your code
+		// write your code
+	if (fsMounted == 0) {
+		printf("no file system is mounted\n");
+		return -1;
+	}
+	// index out of range
+	if (fd > 127 || fd < 0) {
+		return -1;
+	}
+	// file not found
+	if (strcmp(fileAllocations[fd], "") == 0) {
+		return -1;
+	}
+	// filesize exceeds current file size
+	if (offset >= myfs_filesize(fd)) {
+		return -1;
+	}
+
+	int numOfBlocks = offset / BLOCKSIZE;
+	int byteOffset = offset % BLOCKSIZE;
+
+	open_file_table[fd] = numOfBlocks - 1;
+	byte_offsets[fd] = byteOffset;
+	position = offset;
 
 	return (position); 
 } 
 
 int myfs_filesize (int fd)
 {
-	int size = -1; 
+	int size = 0; 
 	
 	// write your code
+	if (fsMounted == 0) {
+		printf("no file system is mounted\n");
+		return -1;
+	}
+	// index out of range
+	if (fd > 127 || fd < 0) {
+		return -1;
+	}
+	// file not found
+	if (strcmp(fileAllocations[fd], "") == 0) {
+		return -1;
+	}
+
+	for(int i = 0; i < 1024; i++) {
+		if(fileBlockNumbers[fd][i] != -1) {
+			size += BLOCKSIZE;
+		}
+		size -= BLOCKSIZE;
+		size += byte_offsets[fd];
+	}
+	
 
 	return (size); 
 }
@@ -624,6 +663,9 @@ void myfs_print_dir ()
 {
 
 	// write your code
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		printf("%s\n", fileAllocations[i]);
+	}
 	
 }
 
@@ -632,6 +674,33 @@ void myfs_print_blocks (char *  filename)
 {
 
 	// write your code
+	if (fsMounted == 0) {
+		printf("no file system is mounted\n");
+	
+	}
+
+	int index = -1; 
+	
+	// write your code
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		if (strcmp(fileAllocations[i], filename) == 0) {
+			index = i;
+			break; 
+		}
+	}
+	if (index == -1) {
+		printf("file not found\n");
+
+	}
+
+	printf("%s: ", fileAllocations[index]);
+
+	for (int i = 0; i < 1024; i++) {
+		if (fileBlockNumbers[index][i] != -1) {
+			printf("%d ", fileBlockNumbers[index][i]);
+		}
+	}
+	printf("\n");
 
 }
 

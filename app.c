@@ -8,10 +8,7 @@
 int main(int argc, char *argv[])
 {
 	
-	printf("creating disk: %d\n", myfs_diskcreate("testDisk"));
-	printf("making file system: %d\n", myfs_makefs("testDisk"));
-	printf("mounting file system: %d\n", myfs_mount("testDisk"));
-	/*
+	
 	char diskname[128]; 
 	char filename[16][MAXFILENAMESIZE]; 
 	int i, n; 
@@ -81,6 +78,6 @@ int main(int argc, char *argv[])
 	myfs_close (fd2); 
 	 
 	myfs_umount(); 
-	*/
+	
 	return (0);		
 }
