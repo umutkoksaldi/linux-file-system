@@ -264,15 +264,6 @@ int myfs_umount()
 		putblock(blockIndex, (void *)buf);
 		blockIndex++;
 	}
-	// free the allocated blocks
-	for (int i = 0; i < MAXFILECOUNT; i++) {
-		free(fileAllocations[i]);
-		free(fileBlockNumbers[i]);
-	}
-	free(fileAllocations);
-	free(fileBlockNumbers);
-	free(open_file_table);
-	free(byte_offsets);
 
 	fsMounted = 0;
 
@@ -285,6 +276,11 @@ int myfs_umount()
 /* create a file with name filename */
 int myfs_create(char *filename)
 {
+
+	char name_of_file[32];
+	strcpy(name_of_file, filename);
+
+	// printf("creating: %s\n", filename);
 
 	// write your code 
 	if (fsMounted == 0) {
@@ -304,7 +300,7 @@ int myfs_create(char *filename)
 		return -1;
 	}
 	
-	fileAllocations[index] = filename;
+	strcpy(fileAllocations[index], name_of_file);
 
 	return (0); 
 }
@@ -383,7 +379,7 @@ int myfs_delete(char *filename)
 		return -1;
 	}
 
-	fileAllocations[index] = "";
+	strcpy(fileAllocations[index], "");
 	for(int i = 0; i < 1024; i++) {
 		if (fileBlockNumbers[index][i] != -1) {
 			allBlocks[fileBlockNumbers[index][i] - dataStartIndex] = 0;
@@ -661,10 +657,10 @@ int myfs_filesize (int fd)
 
 void myfs_print_dir ()
 {
-
 	// write your code
 	for (int i = 0; i < MAXFILECOUNT; i++) {
-		printf("%s\n", fileAllocations[i]);
+		if (strcmp(fileAllocations[i], "") != 0)
+			printf("%s\n", fileAllocations[i]);
 	}
 	
 }
