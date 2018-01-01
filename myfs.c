@@ -17,6 +17,7 @@ int  disk_blockcount;  // block count on disk
 int blockIndex;
 
 char **fileAllocations;
+int *endOfFiles;
 int **fileBlockNumbers;
 int *open_file_table;
 int *byte_offsets;
@@ -145,6 +146,15 @@ int myfs_makefs(char *vdisk)
 		putblock(blockIndex, (void *)buf);
 		blockIndex++;
 	}
+	endOfFiles = (int *) malloc(sizeof(int) * MAXFILECOUNT);
+	for (int i = 0; i < MAXFILECOUNT; i++) { 
+		endOfFiles[i] = -1;
+	}
+	int *endBuffer = (int *) malloc(BLOCKSIZE);
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		endBuffer[i] = endOfFiles[i];
+	}
+	putblock(blockIndex, (void *) endBuffer);
 
 	fsync (disk_fd); 
 	close (disk_fd); 
@@ -236,7 +246,13 @@ int myfs_mount (char *vdisk)
 			}
 		}
 	}
-	
+	// initialize the end of files
+	endOfFiles = (int *) malloc (sizeof(int) * MAXFILECOUNT);
+	int *endBuffer = (int *) malloc(BLOCKSIZE);
+	getblock(blockIndex, (void *) endBuffer);
+	for (int i = 0; i < MAXFILECOUNT; i++){
+		endOfFiles[i] = endBuffer[i];
+	}
 	/* you can place these returns wherever you want. Below
 	   we put them at the end of functions so that compiler will not
 	   complain.
@@ -265,6 +281,12 @@ int myfs_umount()
 		putblock(blockIndex, (void *)buf);
 		blockIndex++;
 	}
+
+	int *endBuffer = (int *) malloc(BLOCKSIZE);
+	for (int i = 0; i < MAXFILECOUNT; i++) {
+		endBuffer[i] = endOfFiles[i];
+	}
+	putblock(blockIndex, (void *) endBuffer);
 
 	fsMounted = 0;
 
@@ -416,6 +438,8 @@ int myfs_delete(char *filename)
 
 int myfs_read(int fd, void *buf, int n)
 {
+	myfs_print_blocks(fileAllocations[fd]);
+
 	int bytes_read = 0; 
 
 	if (fsMounted == 0) {
@@ -431,7 +455,7 @@ int myfs_read(int fd, void *buf, int n)
 		return -1;
 	}
 	// single block will be read
-	if (byte_offsets[fd] + n <= 4095) {
+	if (byte_offsets[fd] + n <= 4096) {
 		int blockOffset = open_file_table[fd];
 
 		int blockNo = fileBlockNumbers[fd][blockOffset];
@@ -441,7 +465,8 @@ int myfs_read(int fd, void *buf, int n)
 		int bufIndex = 0;
 		char *temp = (char*) buf;
 		for(int i = byte_offsets[fd]; i < byte_offsets[fd] + n; i++) {
-			if(blockBuffer[i] == '\0') {
+			if(i == endOfFiles[fd]) {
+				printf("reached end of file: index %d\n", i);
 				break;
 			}				
 			temp[bufIndex] = blockBuffer[i];
@@ -474,7 +499,8 @@ int myfs_read(int fd, void *buf, int n)
 		blockBuffer = malloc(BLOCKSIZE);
 		getblock(blockNo, (void *) blockBuffer);
 		for(int i = 0; i < n; i++) {
-			if(blockBuffer[i] == '\0') {
+			if(i == endOfFiles[fd]) {
+				printf("reached end of file: index %d\n", i);
 				break;
 			}		
 			temp[bufIndex] = blockBuffer[i];
@@ -511,7 +537,7 @@ int myfs_write(int fd, void *buf, int n)
 		return -1;
 	}
 	// single block will be written
-	if (byte_offsets[fd] + n <= 4095) {
+	if (byte_offsets[fd] + n <= 4096) {
 		int blockOffset = open_file_table[fd];
 
 		int blockNo = fileBlockNumbers[fd][blockOffset];
@@ -525,9 +551,9 @@ int myfs_write(int fd, void *buf, int n)
 			bufIndex++;
 			bytes_written++;
 		}
-		blockBuffer[byte_offsets[fd] + n] = '\0';
 		putblock(blockNo, (void *)blockBuffer);
 		byte_offsets[fd] += n;
+		endOfFiles[fd] = byte_offsets[fd];
 		
 	}
 	// multiple files
@@ -575,13 +601,13 @@ int myfs_write(int fd, void *buf, int n)
 			bufIndex++;
 			bytes_written++;
 		}
-		blockBuffer[byte_offsets[fd] + n] = '\0';
 		putblock(blockNo, (void *) blockBuffer);
 		free(blockBuffer);
 		open_file_table[fd]++;
 		byte_offsets[fd] = n;
+		endOfFiles[fd] = byte_offsets[fd];
 	}
-
+	printf("bytes written: %d\n", bytes_written); 
 	return (bytes_written); 
 } 
 
