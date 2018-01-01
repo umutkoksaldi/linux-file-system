@@ -432,6 +432,7 @@ int myfs_delete(char *filename)
 	}
 	open_file_table[index] = -1;
 	byte_offsets[index] = -1;
+	endOfFiles[index] = -1;
 
 	return (0); 
 }
@@ -636,14 +637,15 @@ int myfs_truncate(int fd, int size)
 	int byteOffset = size % BLOCKSIZE;
 
 	for (int i = 0; i < 1024; i++) {
-		if (i > numOfBlocks - 1) {
+		if (i > numOfBlocks) {
 			allBlocks[fileBlockNumbers[fd][i] - dataStartIndex] = 0;
 			fileBlockNumbers[fd][i] = -1;
 		}
 	}
 
-	open_file_table[fd] = numOfBlocks - 1;
+	open_file_table[fd] = numOfBlocks;
 	byte_offsets[fd] = byteOffset;
+	endOfFiles[fd] = byte_offsets[fd];
 
 	return (0); 
 } 
@@ -674,7 +676,7 @@ int myfs_seek(int fd, int offset)
 	int numOfBlocks = offset / BLOCKSIZE;
 	int byteOffset = offset % BLOCKSIZE;
 
-	open_file_table[fd] = numOfBlocks - 1;
+	open_file_table[fd] = numOfBlocks;
 	byte_offsets[fd] = byteOffset;
 	position = offset;
 
@@ -703,11 +705,11 @@ int myfs_filesize (int fd)
 		if(fileBlockNumbers[fd][i] != -1) {
 			size += BLOCKSIZE;
 		}
-		size -= BLOCKSIZE;
-		size += byte_offsets[fd];
 	}
-	
-
+	size -= BLOCKSIZE;
+	size += endOfFiles[fd];
+	printf("endoffiles: %d\n", endOfFiles[fd]);
+	printf("filesize: %d\n", size);
 	return (size); 
 }
 
