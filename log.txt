@@ -1,0 +1,93 @@
+Test 1.1: Creating disk.
+Test 1.1: Formatting disk.
+Test 1.1: Mounting disk.
+Test 1.1: Creating file.
+Test 1.1: Closing created file.
+Test 1.1: Creating file.
+Test 1.1: Closing created file.
+Test 1.1: Creating file.
+Test 1.1: Closing created file.
+Test 1.1: Creating file.
+Test 1.1: Closing created file.
+Test 1.1: Creating file.
+Test 1.1: Closing created file.
+Test 1.1: TRUE
+
+Test 1.2: Listing directory content.
+Test 1.2: TRUE
+
+Test 1.3: TRUE
+
+Test 2.1: Deleting file.
+Test 2.1: Trying to open deleted file. It should fail.
+Test 2.1: Cannot open file.
+Test 2.1: Deleting file.
+Test 2.1: Trying to open deleted file. It should fail.
+Test 2.1: Cannot open file.
+Test 2.1: Deleting file.
+Test 2.1: Trying to open deleted file. It should fail.
+Test 2.1: Cannot open file.
+Test 2.1: TRUE
+
+Test 2.2: Listing directory content.
+Test 2.2: TRUE
+
+Test 2.3: TRUE
+
+Test 3.1: Creating disk.
+Test 3.1: Formatting disk.
+Test 3.1: Mounting disk.
+Test 3.1: Creating file.
+Test 3.1: Writing content.
+Test 3.1: Closing file.
+Test 3.1: TRUE
+
+Test 3.2: Opening file.
+Test 3.2: Reading content.
+Test 3.2: Closing file.
+Test 3.2: TRUE
+
+Test 4.1: Creating disk.
+Test 4.1: Formatting disk.
+Test 4.1: Mounting disk.
+Test 4.1: Creating file.
+Test 4.1: Writing content.
+Test 4.1: Closing file.
+Test 4.1: TRUE
+
+Test 4.2: Opening file.
+Test 4.2: Reading and comparing content.
+Test 4.2: Closing file.
+Test 4.2: TRUE
+
+Test 5.1: Opening file.
+Test 5.1: Seeking.
+Test 5.1: Reading content.
+Test 5.1: Comparing content.
+Test 5.1: Truncating file.
+Test 5.1: Checking truncated file size.
+Test 5.1: Writing new content.
+Test 5.1: Closing file.
+Test 5.1: TRUE
+
+Test 5.2: Opening file.
+Test 5.2: Reading content.
+Test 5.2: Comparing content.
+Test 5.2: Closing file.
+Test 5.2: TRUE
+
+Test 6.1: Creating disk.
+Test 6.1: Formatting disk.
+Test 6.1: Mounting disk.
+Test 6.1: Creating files.
+Test 6.1: Closing created files.
+Test 6.1: Opening closed files.
+Test 6.1: Writing content.
+Test 6.1: Closing files.
+Test 6.1: TRUE
+
+Test 6.2: Opening files.
+Test 6.2: Reading and comparing content.
+Test 6.2: Closing files.
+Test 6.2: TRUE
+
