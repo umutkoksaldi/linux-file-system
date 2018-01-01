@@ -39,6 +39,7 @@ int getblock (int blocknum, void *buf)
 	if (blocknum >= disk_blockcount) 
 		return (-1); //error
 
+	printf("getblock: %d\n", blocknum);
 	offset = lseek (disk_fd, blocknum * BLOCKSIZE, SEEK_SET); 
 	if (offset == -1) {
 		printf ("lseek error\n"); 
@@ -65,7 +66,7 @@ int putblock (int blocknum, void *buf)
 	
 	if (blocknum >= disk_blockcount) 
 		return (-1); //error
-
+	printf("putblock: %d\n", blocknum);
 	offset = lseek (disk_fd, blocknum * BLOCKSIZE, SEEK_SET);
 	if (offset == -1) {
 		printf ("lseek error\n"); 
@@ -302,7 +303,28 @@ int myfs_create(char *filename)
 	
 	strcpy(fileAllocations[index], name_of_file);
 
-	return (0); 
+	// find empty block for file
+	int freeBlockIndex = -1;
+	for(int i = 0; i < maxDataBlocks; i++) {
+		if(allBlocks[i] == 0) {
+			freeBlockIndex = i;
+			break;
+		}
+	}
+
+	if (freeBlockIndex == -1) {
+		printf("no free block was found for the file\n");
+		return -1;
+	}
+
+	allBlocks[freeBlockIndex] = 1;
+	fileBlockNumbers[index][0] = freeBlockIndex + dataStartIndex;
+	// open the file after creation
+	open_file_table[index] = 0;
+	byte_offsets[index] = 0;
+
+
+	return index; 
 }
 
 
@@ -419,6 +441,9 @@ int myfs_read(int fd, void *buf, int n)
 		int bufIndex = 0;
 		char *temp = (char*) buf;
 		for(int i = byte_offsets[fd]; i < byte_offsets[fd] + n; i++) {
+			if(blockBuffer[i] == '\0') {
+				break;
+			}				
 			temp[bufIndex] = blockBuffer[i];
 			bufIndex++;
 			bytes_read++;
@@ -449,6 +474,9 @@ int myfs_read(int fd, void *buf, int n)
 		blockBuffer = malloc(BLOCKSIZE);
 		getblock(blockNo, (void *) blockBuffer);
 		for(int i = 0; i < n; i++) {
+			if(blockBuffer[i] == '\0') {
+				break;
+			}		
 			temp[bufIndex] = blockBuffer[i];
 			bufIndex++;
 			bytes_read++;
@@ -461,6 +489,7 @@ int myfs_read(int fd, void *buf, int n)
 	if (bytes_read == 0) {
 		return -1;
 	}
+	printf("bytes read: %d\n", bytes_read);
 	return (bytes_read); 
 
 }
@@ -496,6 +525,7 @@ int myfs_write(int fd, void *buf, int n)
 			bufIndex++;
 			bytes_written++;
 		}
+		blockBuffer[byte_offsets[fd] + n] = '\0';
 		putblock(blockNo, (void *)blockBuffer);
 		byte_offsets[fd] += n;
 		
@@ -545,6 +575,7 @@ int myfs_write(int fd, void *buf, int n)
 			bufIndex++;
 			bytes_written++;
 		}
+		blockBuffer[byte_offsets[fd] + n] = '\0';
 		putblock(blockNo, (void *) blockBuffer);
 		free(blockBuffer);
 		open_file_table[fd]++;
